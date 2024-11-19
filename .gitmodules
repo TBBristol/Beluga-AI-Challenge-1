@@ -4,3 +4,9 @@
 [submodule "benchmarks"]
 	path = benchmarks
 	url = git@github.com:TUPLES-Trustworthy-AI/Beluga-AI-Challenge-Benchmarks.git
+[submodule "Beluga-AI-Challenge-Benchmarks"]
+	path = Beluga-AI-Challenge-Benchmarks
+	url = https://github.com/TBBristol/Beluga-AI-Challenge-Benchmarks.git
+[submodule "Beluga-AI-Challenge-Toolkit"]
+	path = Beluga-AI-Challenge-Toolkit
+	url = https://github.com/TBBristol/Beluga-AI-Challenge-Toolkit.git
