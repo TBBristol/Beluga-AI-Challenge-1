@@ -1,0 +1,6 @@
+[submodule "benchmarks"]
+	path = benchmarks
+	url = https://github.com/TBBristol/benchmarks.git
+[submodule "toolkit"]
+	path = toolkit
+	url = https://github.com/TBBristol/toolkit.git
