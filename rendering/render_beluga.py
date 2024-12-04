@@ -118,7 +118,8 @@ class Beluga_board:
 
 
 if __name__ == "__main__":
-    Beluga_board = Beluga_board("/Users/ha24583/Documents/GitHub/Beluga-AI-Challenge-internal/tools/output/problem_j355_r20_oc23_f199_s135_133.json")
+
+    Beluga_board = Beluga_board("/Users/ha24583/Documents/GitHub/Beluga-AI-Challenge/instances/toy")
     Beluga_board._render_frame()
     print("stop")
     
