@@ -5,7 +5,7 @@ import numpy as np
 from itertools import pairwise
 from gymnasium.spaces import Box, Discrete
 import torch
-
+from action_dict import action_dict
 class StackingEnv(gym.Env):
     def __init__(self, json_path):
         """_summary_
@@ -14,6 +14,8 @@ class StackingEnv(gym.Env):
             json_path (_type_): _description_
             Priority: if p_i < p_j then jig i is to be needed before jig j
         """
+
+    
         self.max_racks = 20
         self.json_path = json_path
         self.json_data = json.load(open(json_path))
@@ -23,8 +25,6 @@ class StackingEnv(gym.Env):
         self.flights = self.json_data["flights"]
         self.jigs = self.json_data["jigs"]    #UPDATE EACH TIME
         self.racks = self.json_data["racks"]
-
-
         self.features = 8 #TODO KEEP ME UP TO DATE
 
         #ordered list of flights
@@ -32,7 +32,7 @@ class StackingEnv(gym.Env):
         self.current_flight = self.flight_list[0]
 
         #ordered list of jigs to come off flights
-        self.jig_list = [jig for flight in self.flights for jig in flight["incoming"]]
+        self.jigs_from_flights = [jig for flight in self.flights for jig in flight["incoming"]]
        
         #priority list of jigs to go to hangars
         self.hangar_priority_jigs = self.get_priority_jigs_for_hangars()
@@ -48,9 +48,9 @@ class StackingEnv(gym.Env):
         # max_racks-2*max_racks: move next jig to plane
         # 2*max_racks-max_racks*len(self.production_lines): move next jig to hangar 1,2,3 (if more than one hanagr)
         self.action_space = Discrete(self.max_racks+self.max_racks+self.max_racks*len(self.production_lines))
-        
-        
-        print("init check")
+        self.action_dict = action_dict #imported to keep track of actions        print("init check")
+
+    #state functions
 
     def get_type_priorities_for_planes(self):
         type_priorities_for_planes = {}
@@ -109,30 +109,13 @@ class StackingEnv(gym.Env):
             rack_us_to_plane.append(sum([1 for j in pairwise(i) if j[0] > j[1]]))
         return rack_us_to_plane
         
-                
-
     def num_us_in_rack_hangar_side(self, rack_priorities: list) -> list:
             rack_us = []
             for i in rack_priorities:
                 #j[1] > j[0] because we want to unload hangar side and lower number is higher priority
                 rack_us.append(sum([1 for j in pairwise(i) if j[1] > j[0]]))
             return rack_us
-
-    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
-        
-        # We need the following line to seed self.np_random
-        super().reset(seed=seed)
-
-        observation = self._get_obs()
-        info = self._get_info()
-
-        return observation, info
     
-    
-            
-        
-
-
     def _get_obs(self):
 
         """REMEBER: lower number priority is needed first
@@ -156,7 +139,7 @@ class StackingEnv(gym.Env):
         
 
         #From aircraft to racks -----------
-        next_to_be_stacked: str = self.jig_list[0]
+        next_to_be_stacked: str = self.jigs_from_flights[0]
         #size of next to be stacked
         s_nxt_h = self.get_jig_current_size(next_to_be_stacked)
         #If the jig is not to be sent to hangars make the priority value very high (ie never be retrived)
@@ -164,9 +147,9 @@ class StackingEnv(gym.Env):
         #Priority of jig nearest to hangars in rack
         p_h = [self.hangar_priority_jigs.get(i["jigs"][-1], 3000) for i in self.racks]
         #lowest priority still to unload
-        low_h = max([self.hangar_priority_jigs.get(jig, 3000) for jig in self.jig_list])
+        low_h = max([self.hangar_priority_jigs.get(jig, 3000) for jig in self.jigs_from_flights])
         #number of jigs still to unload with priority lower than stack priority p_h
-        priorities_to_unload = [self.hangar_priority_jigs.get(jig, 3000) for jig in self.jig_list]
+        priorities_to_unload = [self.hangar_priority_jigs.get(jig, 3000) for jig in self.jigs_from_flights]
         num_low_h = [sum([1 for i in priorities_to_unload if i > j] ) for j in p_h]
 
 
@@ -187,7 +170,7 @@ class StackingEnv(gym.Env):
 
         #TODO think about more featues for plane side
 
-        obs = np.full((self.max_racks,self.features),-1)
+        obs = np.full((self._max_racks,self.features),-1)
         obs[:len(self.racks),0] = np.array(rack_spaces).T
         obs[:len(self.racks),1] = s_nxt_h
         obs[:len(self.racks),2] = p_nxt_h
@@ -198,6 +181,76 @@ class StackingEnv(gym.Env):
         obs[:len(self.racks),7] = np.array(rack_us_to_plane).T
         
         return torch.from_numpy(obs.flatten())
+    
+    #Action Code:
+
+    def beluga_to_rack(self, rack_name: str):
+        rack = self.racks[int(rack_name.strip("rack"))]
+        space = self.get_current_rack_space(rack)
+        current_flight_index = [i["name"] for i in self.flights].index(self.current_flight)
+        jig = self.flights[current_flight_index]["incoming"][0]
+        if jig:
+            if self.jigs[jig]["empty"]:
+                jig_size = self.jig_types[self.jigs[jig]["type"]]["size_empty"]
+            else:
+                jig_size = self.jig_types[self.jigs[jig]["type"]]["size_loaded"]
+        #If there is sapce on rack and there are jigs to be loaded from flight
+        if space-jig_size > 0 and jig:
+            #remove from list of incomings IF it is there
+            jig_removed_from_flight_list = self.jigs_from_flights.pop(0)
+            jig_removed_from_flight= self.flights[current_flight_index]["incoming"].pop(0)
+            assert jig_removed_from_flight == jig == jig_removed_from_flight_list
+
+            #Add jig to rack at Beluga side and remove from flight
+            self.racks[int(rack_name.strip("rack"))]["jigs"].prepend(jig)
+            
+
+
+    def rack_to_beluga(self, rack_name: str):
+        rack = self.racks[int(rack_name.strip("rack"))]
+        jig = rack["jigs"][0]
+        current_flight_index = [i["name"] for i in self.flights].index(self.current_flight)
+
+        #If there is a jig of the correct type on top of the rack and it is empty
+        if self.jigs[jig]["type"] == self.flights[current_flight_index]["outgoing"][0] and self.jigs[jig]["empty"]:
+            #Add jig to flight at Beluga side and remove from rack
+            loaded = self.flights[current_flight_index]["outgoing"].pop(0)
+            removed_from_rack = rack["jigs"].pop(0)
+            assert loaded == removed_from_rack
+
+
+       
+        
+
+    def rack_to_production_line(self, rack_name: str, production_line_name: str):
+        rack = self.racks[int(rack_name.strip("rack"))]
+        jig = rack["jigs"][0]
+        production_line = self.production_lines[int(production_line_name.strip("pl"))]
+
+        if jig == production_line["schedule"][0]:
+            #Add jig to production line and remove from rack
+            jig_removed_from_rack = rack["jigs"].pop(-1)
+            jig_added_to_production_line = production_line["schedule"].pop(0)
+            assert jig_removed_from_rack == jig_added_to_production_line
+
+
+
+    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+        
+        # We need the following line to seed self.np_random
+        super().reset(seed=seed)
+
+        observation = self._get_obs()
+        info = self._get_info()
+
+        return observation, info
+    
+    
+            
+        
+
+
+    
 
     def _get_info(self):
         ...
@@ -218,8 +271,8 @@ class StackingEnv(gym.Env):
 
 if __name__ == "__main__":
     env = StackingEnv("instances/problem_44_s45_j10_r2_oc83_f5.json")
+    env.rack_to_beluga("rack01")
     obs,info = env.reset()
     print(env.json_data)
 
     #TODO build out step and actions look at what original lists need modifying at each statge
-    
