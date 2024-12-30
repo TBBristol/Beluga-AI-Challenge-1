@@ -13,6 +13,9 @@
         },
         {
             "name": "factory_trailer_2"
+        },
+        {
+            "name": "factory_trailer_3"
         }
     ],
     "hangars": [
@@ -49,7 +52,9 @@
         {
             "name": "rack00",
             "size": 26,
-            "jigs": []
+            "jigs": [
+                "jig0001"
+            ]
         },
         {
             "name": "rack01",
@@ -60,32 +65,17 @@
     "jigs": {
         "jig0001": {
             "name": "jig0001",
-            "type": "typeC",
+            "type": "typeB",
             "empty": false
         },
         "jig0002": {
             "name": "jig0002",
-            "type": "typeC",
+            "type": "typeD",
             "empty": false
         },
         "jig0003": {
             "name": "jig0003",
-            "type": "typeA",
-            "empty": false
-        },
-        "jig0004": {
-            "name": "jig0004",
-            "type": "typeA",
-            "empty": false
-        },
-        "jig0005": {
-            "name": "jig0005",
-            "type": "typeA",
-            "empty": false
-        },
-        "jig0006": {
-            "name": "jig0006",
-            "type": "typeA",
+            "type": "typeB",
             "empty": false
         }
     },
@@ -93,22 +83,19 @@
         {
             "name": "pl0",
             "schedule": [
-                "jig0002",
-                "jig0004"
+                "jig0001"
             ]
         },
         {
             "name": "pl1",
             "schedule": [
-                "jig0003",
-                "jig0006"
+                "jig0003"
             ]
         },
         {
             "name": "pl2",
             "schedule": [
-                "jig0001",
-                "jig0005"
+                "jig0002"
             ]
         }
     ],
@@ -116,7 +103,6 @@
         {
             "name": "beluga1",
             "incoming": [
-                "jig0001",
                 "jig0002"
             ],
             "outgoing": []
@@ -124,10 +110,7 @@
         {
             "name": "beluga2",
             "incoming": [
-                "jig0003",
-                "jig0004",
-                "jig0005",
-                "jig0006"
+                "jig0003"
             ],
             "outgoing": []
         },
@@ -135,8 +118,7 @@
             "name": "beluga3",
             "incoming": [],
             "outgoing": [
-                "typeC",
-                "typeC"
+                "typeD"
             ]
         }
     ]

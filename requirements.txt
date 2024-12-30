@@ -1,0 +1,7 @@
+
+numpy
+scipy
+gymnasium
+pufferlib[cleanrl]
+tyro
+tensorboard

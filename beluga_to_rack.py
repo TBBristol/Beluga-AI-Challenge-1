@@ -3,18 +3,21 @@ import gymnasium as gym
 from typing import Optional
 import numpy as np
 from itertools import pairwise
-from gymnasium.spaces import Box, Discrete, Sequence
+
 import torch
 from action_dict import action_dict
 import pufferlib
 import os
 import random
+import math
+from gymnasium import spaces
+from pufferlib.pufferlib.spaces import Box, Discrete
 
 
 
   
 
-class StackingEnv(gym.Env):
+class Beluga_rack_stack(gym.Env):
     def __init__(self, json_folder):
         """_summary_
 
@@ -27,20 +30,20 @@ class StackingEnv(gym.Env):
         self.json_path = random.choice(os.listdir(json_folder))
         self.json_data = json.load(open(json_folder+"/"+self.json_path)) #TODO make this  path 
 
-        self.cumulative_reward = 0
-        self.cumulative_length = 0
+        #DIRECT JSON DATA
         self.max_racks = 20
         self.jig_types = self.json_data["jig_types"]
         self.racks = self.json_data["racks"]
         self.production_lines = self.json_data["production_lines"]
         self.flights = self.json_data["flights"]
-        self.jigs = self.json_data["jigs"]    #UPDATE EACH TIME
+        self.jigs = self.json_data["jigs"]    
         self.racks = self.json_data["racks"]
-        self.features = 8 #TODO KEEP ME UP TO DATE
+        self.trailers = self.json_data["trailers_beluga"]
 
-        #ordered list of flights
-        self.flight_list = [i["name"] for i in self.flights]
-        self.current_flight = self.flight_list[0]
+        #INITIAL RL VARS
+        self.cumulative_reward = 0
+        self.cumulative_length = 0
+        self.features = 8 #TODO KEEP ME UP TO DATE
 
         #ordered list of jigs to come off flights
         self.jigs_from_flights = [jig for flight in self.flights for jig in flight["incoming"]]
@@ -51,19 +54,30 @@ class StackingEnv(gym.Env):
         #ordered list to go to outgoing flights
         self.outgoing_flight_jigs = self.get_outgoing_flight_jigs()
 
-        self.observation_space = Box(low=-1, high=3000, shape=(self.max_racks, self.features))
+        #Set up trailers to recieve Jigs
+        for t in self.trailers:
+            t["jig"] = []
 
 
-        self.prod_line_jigs = {p["name"]:[] for p in self.production_lines}
-        
+       
+
+        #ACTION/OBS SPACE
+
+        #OBS SPACE = 8 features for each rack up to 20 racks, up to 3 trailers empty/full
+        #SO BOX space (20,8) plus first row is trailers binary empty/full with -1 padding so (21,8)
+
+        #TODO trying to make this a pufferbox space
+        self.observation_space = spaces.Box(low=-1, high=3000, shape=(self.max_racks+1, self.features))
         
         #Actions: 
-        # 0-max_racks: move next jig to rack
-        # max_racks-2*max_racks: move next jig to plane
-        # 2*max_racks-max_racks*len(self.production_lines): move next jig to hangar 1,2,3 (if more than one hanagr)
-        self.action_space = Discrete(self.max_racks+self.max_racks+self.max_racks*len(self.production_lines))
-        self.action_dict = action_dict #imported to keep track of actions        print("init check")
-        print("init_checkpoint")
+        # 3 for plane to trailer, 3x 20 for trailer to rack = 63
+        self.action_space = spaces.Discrete(63)
+        self.action_dict = {0: 'Beluga_to_t1', 1: 'Beluga_to_t2', 2: 'Beluga_to_t3', 3: 'Trailer_1_to_rack01', 4: 'Trailer_1_to_rack02', 5: 'Trailer_1_to_rack03', 6: 'Trailer_1_to_rack04', 7: 'Trailer_1_to_rack05', 8: 'Trailer_1_to_rack06', 9: 'Trailer_1_to_rack07', 10: 'Trailer_1_to_rack08', 11: 'Trailer_1_to_rack09', 12: 'Trailer_1_to_rack10', 13: 'Trailer_1_to_rack11', 14: 'Trailer_1_to_rack12', 15: 'Trailer_1_to_rack13', 16: 'Trailer_1_to_rack14', 17: 'Trailer_1_to_rack15', 18: 'Trailer_1_to_rack16', 19: 'Trailer_1_to_rack17', 20: 'Trailer_1_to_rack18', 21: 'Trailer_1_to_rack19', 22: 'Trailer_1_to_rack20', 23: 'Trailer_2_to_rack01', 24: 'Trailer_2_to_rack02', 25: 'Trailer_2_to_rack03', 26: 'Trailer_2_to_rack04', 27: 'Trailer_2_to_rack05', 28: 'Trailer_2_to_rack06', 29: 'Trailer_2_to_rack07', 30: 'Trailer_2_to_rack08', 31: 'Trailer_2_to_rack09', 32: 'Trailer_2_to_rack10', 33: 'Trailer_2_to_rack11', 34: 'Trailer_2_to_rack12', 35: 'Trailer_2_to_rack13', 36: 'Trailer_2_to_rack14', 37: 'Trailer_2_to_rack15', 38: 'Trailer_2_to_rack16', 39: 'Trailer_2_to_rack17', 40: 'Trailer_2_to_rack18', 41: 'Trailer_2_to_rack19', 42: "Trailer_2_to_rack20", 43: 'Trailer_3_to_rack01', 44: 'Trailer_3_to_rack02', 45: 'Trailer_3_to_rack03', 46: 'Trailer_3_to_rack04', 47: 'Trailer_3_to_rack05', 48: 'Trailer_3_to_rack06', 49: 'Trailer_3_to_rack07', 50: 'Trailer_3_to_rack08', 51: 'Trailer_3_to_rack09', 52: 'Trailer_3_to_rack10', 53: 'Trailer_3_to_rack11', 54: 'Trailer_3_to_rack12', 55: 'Trailer_3_to_rack13', 56: 'Trailer_3_to_rack14', 57: 'Trailer_3_to_rack15', 58: 'Trailer_3_to_rack16', 59: 'Trailer_3_to_rack17', 60: 'Trailer_3_to_rack18', 61: 'Trailer_3_to_rack19', 62: 'Trailer_3_to_rack20'}
+        
+        
+        
+        print("init check")
+       
     #state functions
 
     def get_type_priorities_for_planes(self):
@@ -130,6 +144,16 @@ class StackingEnv(gym.Env):
                 rack_us.append(sum([1 for j in pairwise(i) if j[1] > j[0]]))
             return rack_us
     
+    def get_trailer_fill(self):
+        trailers = np.full((self.features),-1)
+        for i,t in enumerate(self.trailers):
+            if t['jig']:
+                trailers[i] = 1
+            else:
+                trailers[i] = 0
+        return trailers
+
+
     def _get_obs(self):
 
         """REMEBER: lower number priority is needed first
@@ -195,192 +219,159 @@ class StackingEnv(gym.Env):
 
         #TODO think about more featues for plane side
 
-        obs = np.full((self.max_racks,self.features),-1)
-        obs[:len(self.racks),0] = np.array(rack_spaces).T
-        obs[:len(self.racks),1] = s_nxt_h
-        obs[:len(self.racks),2] = p_nxt_h
-        obs[:len(self.racks),3] = np.array(p_h).T
-        obs[:len(self.racks),4] = low_h
-        obs[:len(self.racks),5] = np.array(num_low_h).T
-        obs[:len(self.racks),6] = np.array(rack_us).T
-        obs[:len(self.racks),7] = np.array(rack_us_to_plane).T
+        #Trailers:
+        trailers = self.get_trailer_fill()
+        
+        
+
+
+
+
+        obs = np.full((self.max_racks+1,self.features),-1)
+        obs[0,:] = trailers
+        obs[1:len(self.racks)+1,0] = np.array(rack_spaces).T
+        obs[1:len(self.racks)+1,1] = s_nxt_h
+        obs[1:len(self.racks)+1,2] = p_nxt_h
+        obs[1:len(self.racks)+1,3] = np.array(p_h).T
+        obs[1:len(self.racks)+1,4] = low_h
+        obs[1:len(self.racks)+1,5] = np.array(num_low_h).T
+        obs[1:len(self.racks)+1,6] = np.array(rack_us).T
+        obs[1:len(self.racks)+1,7] = np.array(rack_us_to_plane).T
         
         return torch.from_numpy(obs)
     
     #Action Code:
 
-    def beluga_to_rack(self, rack_name: str):
+    def trailer_to_rack(self, trailer_name: str, rack_name:str):
+        """Takes the jig that is on trailer_name and moves to to Rack_name on the 
+        Beluga side. Removes it from the trailer list and adds it to the rack list
+
+        Args:
+            trailer_name (str): _description_
+            rack_name (str): _description_
+        """
         rack = self.racks[int(rack_name.strip("rack"))]
         space = self.get_current_rack_space(rack)
-        current_flight_index = [i["name"] for i in self.flights].index(self.current_flight)
-        jig = self.flights[current_flight_index]["incoming"][0]
+        jig = self.trailers[int(trailer_name.strip("beluga_trailer"))-1]["jig"][0]
         if jig:
             if self.jigs[jig]["empty"]:
                 jig_size = self.jig_types[self.jigs[jig]["type"]]["size_empty"]
             else:
                 jig_size = self.jig_types[self.jigs[jig]["type"]]["size_loaded"]
+        else:
+            ValueError
         #If there is sapce on rack and there are jigs to be loaded from flight
         if space-jig_size >= 0 and jig:
-            #remove from list of incomings IF it is there
-            jig_removed_from_flight_list = self.jigs_from_flights.pop(0)
-            jig_removed_from_flight= self.flights[current_flight_index]["incoming"].pop(0)
-            assert jig_removed_from_flight == jig == jig_removed_from_flight_list
-
-            #Add jig to rack at Beluga side and remove from flight
+            #Add jig to rack at Beluga side and remove from trailer
             self.racks[int(rack_name.strip("rack"))]["jigs"].insert(0,jig)
+            self.trailers[int(trailer_name.strip("beluga_trailer"))-1]["jig"] = []
             
+    def beluga_to_trailer(self, trailer_name: str):
+        """Takes the next jig on the jig list from the plane and puts it on trailer.
+        Removes the jig from the list self.jigs_from_flights and adds it to the trailer jigs
 
 
-    def rack_to_beluga(self, rack_name: str):
-        rack = self.racks[int(rack_name.strip("rack"))]
-        jig = rack["jigs"][0]
-        current_flight_index = [i["name"] for i in self.flights].index(self.current_flight)
+        Args:
+            trailer (str): the name of the trailer as a str eg beluga_trailer_1
+        """
+        #check trailer is empty
+        if self.trailers[int(trailer_name.strip("beluga_trailer"))-1]["jig"]:
+            ValueError
+        jig = self.jigs_from_flights.pop(0)
+        self.trailers[int(trailer_name.strip("beluga_trailer"))-1]["jig"].append(jig)
 
-        #If there is a jig of the correct type on top of the rack and it is empty
-        if self.jigs[jig]["type"] == self.flights[current_flight_index]["outgoing"][0] and self.jigs[jig]["empty"]:
-            #Add jig to flight at Beluga side and remove from rack
-            loaded = self.flights[current_flight_index]["outgoing"].pop(0)
-            removed_from_rack = rack["jigs"].pop(0)
-            removed_from_outgoing_types_list = self.outgoing_flight_jigs.pop(0)
-            assert jig == removed_from_rack
-            assert self.jigs[jig]["type"] == removed_from_outgoing_types_list
 
-    def rack_to_production_line(self, rack_name: str, production_line_name: str):
-        rack = self.racks[int(rack_name.strip("rack"))]
-        jig = rack["jigs"][0]
-        production_line = self.production_lines[int(production_line_name.strip("pl"))-1]
-
-        if jig == production_line["schedule"][0]:
-            #Add jig to production line and remove from rack
-            jig_removed_from_rack = rack["jigs"].pop(-1)
-            jig_added_to_production_line = production_line["schedule"].pop(0)
-            jig_removed_from_hangar_priority_list = self.hangar_priority_jigs.pop(jig, None)
-            assert jig_removed_from_rack == jig_added_to_production_line
-            self.prod_line_jigs[production_line_name].append(jig)
-            
-    def prod_line_to_rack(self, rack_name: str, production_line_name: str):
-        rack = self.racks[int(rack_name.strip("rack"))]
-        #TODO dont allow it to hangar if there is jig in the hangar
-        #add this to alloqable actions method
-        #must be emoty
-        #must be soemthing in the prod line
-        #must be rack space
-               
+   
 
     def action_mapping(self, action_index):
-        if action_index < 20:
-            return self.beluga_to_rack(f"rack0{action_index}")
-        elif action_index< 40:
-            return self.rack_to_beluga(f"rack0{action_index-20}")
-        elif action_index < 59:
-            return self.rack_to_production_line(f"rack0{action_index-40}","pl1")
-        elif action_index < 79:
-            return self.rack_to_production_line(f"rack0{action_index-60}","pl2")
-        elif action_index < 100:
-            return self.rack_to_production_line(f"rack0{action_index-80}","pl3")
+        #These are the beluga to trailers
+        if action_index <= 2:
+           trailer_name = self.trailers[action_index]['name']
+           self.beluga_to_trailer(trailer_name)
+
+        #And these the trailer to racks 
+         #Trailer to rack actions start at 3. Then T2: 23, T3: 43 ends at 62
         else:
-            return ValueError
-        
+           new_index = action_index - 2  #so 3 is first of these and becomes 1
+           trailer = math.ceil(new_index/20) #e.g 22 becomes new index 20 which is then trailer 1 but 23 is 21 which is math.ceil = 2
+           rack = new_index - (trailer-1) *20 -1 #e.g. new_index 21 is 0 (rack 0)
+           rack_name = f"rack{rack}" if rack >=10 else f"rack0{rack}"
+           trailer_name = self.trailers[trailer-1]['name']
+           self.trailer_to_rack(trailer_name, rack_name)
+#TODO this is ballsed after the else  ^^
+
     
     def get_possible_actions(self):
 
-        #TODO possible we can keep some of this info centrally and not have to loop
-
-        possible_actions = [i for i in range(100)]
-
-        current_flight_index = [i["name"] for i in self.flights].index(self.current_flight)
-        num_jigs = len(self.jigs)
+        #TODO could treat ats a set? Is it more effciient do you need to check if present
+        possible_actions = [i for i in range(63)]
         num_racks = len(self.racks)
+        num_trailers = len(self.trailers)
 
-        #Remove actions for all racks that don't exist:
+        #if there are no jigs on flights cant move them to the trailers
+        if not self.jigs_from_flights:
+            for a in range(0,3):
+                if a in possible_actions:
+                    possible_actions.remove(a)
+
+        #Remove all trailer to rack for racks that don't exist. 
+        #Trailer to rack actions start at 3. Then T2: 23, T3: 43 ends at 62
         for i in range(num_racks,20):
-            possible_actions.remove(i)
-            possible_actions.remove(i+20)
-            possible_actions.remove(i+40)
-            possible_actions.remove(i+60)
-            possible_actions.remove(i+80)
-
+            possible_actions.remove(i+3) #So if theres one rack start at 4
+            possible_actions.remove(i+23)
+            possible_actions.remove(i+43)
         
+        #Now remove all trailer actions that don't exist thats num_trailers+1 to 3
+        #Then each block of 20
 
-       
-        #If there is a plane to be completed
-        if self.current_flight:
-            #If there is a jig in the current flight
-            if self.flights[current_flight_index]["incoming"]:
-                flight_jig = self.flights[current_flight_index]["incoming"][0]
-                if self.jigs[flight_jig]["empty"]:
-                    jig_size = self.jig_types[self.jigs[flight_jig]["type"]]["size_empty"]
-                else:
-                    jig_size = self.jig_types[self.jigs[flight_jig]["type"]]["size_loaded"]
-                #Now check if the current jig will fit on the rack
-                for i, rack in enumerate(self.racks):
-                    space = self.get_current_rack_space(rack)
-                    if space-jig_size >= 0:
-                        continue
-                    else:
-                        possible_actions.remove(i)
-            #Else take all the flight to rack actions out
-            else: 
-                for i in range(0,num_racks): possible_actions.remove(i) 
-        
-        #Else take all the flight to rack actions out
-        else: 
-            for i in range(0,num_racks): possible_actions.remove(i) 
-
-        
+        for t in range(num_trailers, 3): #So if one trailer 1 -> 2 inclusive and actions start at 0
+            if t in possible_actions:
+                possible_actions.remove(t)
             
-        #Now check jig to Beluga actions
-        #These are actions 20-40
-        #If there is a plane to be completed
-        if self.current_flight:
-            #If there is a jig to be sent to a Beluga
-            if self.flights[current_flight_index]["outgoing"]:
-                outgoing_type = self.flights[current_flight_index]["outgoing"][0]
-                for i, rack in enumerate(self.racks):
-                    if rack["jigs"]:
-                        if self.jigs[rack["jigs"][0]]["type"] == outgoing_type and self.jigs[rack["jigs"][0]]["empty"]:
-                            continue
-                        #If the jig is not the right type and not empty remove the action
-                        else:
-                            possible_actions.remove(i+20)
-                    else:
-                        possible_actions.remove(i+20)
-            else:
-                for i in range(20,num_racks+20): possible_actions.remove(i)
-        else:
-            for i in range(20,num_racks+20): possible_actions.remove(i)
+            #Now remove blocks of 20 if there
+            for a in range(20): #0 -> 19
+                if a+3 + 20*t in possible_actions: 
+                    possible_actions.remove(a+3 + 20*t)
 
-        #Now check jig to hangar actions
-        #These are actions 40-99
-
-        #see which jigs we need to send and to what hangar
-        possible_hangar_jigs = {p["schedule"][0]:i for i,p in enumerate(self.production_lines) if p["schedule"]}
-        #Check the jig on the hanagar side of the rack
         
-        #Check each rack
-        for i, rack in enumerate(self.racks):
-            #list of Hangars
-            hangars = [0,1,2]
-            #If the jig is to go to one of the hangars and is not empty
-            if rack["jigs"]:
-                if rack["jigs"][-1] in possible_hangar_jigs.keys() and not self.jigs[rack["jigs"][-1]]["empty"]:
-                    #Remove the hangar from the list
-                    hangar_index = possible_hangar_jigs[rack["jigs"][-1]]
-                    hangars.remove(hangar_index)
-                    #Remove all the actions for the other hangars
-                    for h in hangars:
-                        possible_actions.remove(i+40+(h*20))
-                else:
-                    possible_actions.remove(i+40)
-                    possible_actions.remove(i+40+20)
-                    possible_actions.remove(i+40+40)
-            else:
-                #Remove all the actions for the rack
-                possible_actions.remove(i+40)
-                possible_actions.remove(i+40+20)
-                possible_actions.remove(i+40+40)
 
-        return possible_actions 
+
+        #if trailer is full remove plane to trailer if it isnt remove trailer to rack
+        for i,t in enumerate(self.trailers):
+
+            #If there is a jig in the trailer
+            if t['jig']:
+                if i in possible_actions:
+                #Remove the action for plane to that trailer
+                    possible_actions.remove(i)
+
+                #Now remove if no space on the rack for the jig on each trailer
+                rack_spaces: list[int] = [self.get_current_rack_space(rack) for rack in self.racks]
+                jig_size = self.get_jig_current_size(t['jig'][0])
+                for idx, r in enumerate(rack_spaces):
+                    if r - jig_size < 0: 
+                        if 3 + idx + i*20 in possible_actions: #so rack2 trailer 2 is 3 + 1 + 20 = 24
+                            possible_actions.remove(3 + idx + i*20 )
+
+
+                    
+            #If there is no jig in trailer take remove all trailer to rack for that trailer
+            else:
+                for a in range(3+i*20, 3+i*20+20): #trailer 1 is 3+0*20 = 3 -> 3+0*20+20 = 23(22)
+                    if a in possible_actions:
+                        possible_actions.remove(a)
+
+
+           
+
+                    
+        return possible_actions
+        
+ 
+
+
+    
+
     
     def get_action_mask(self, possible_actions):
         
@@ -403,18 +394,23 @@ class StackingEnv(gym.Env):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
+    
         self.json_path = random.choice(os.listdir(self.json_folder))
         self.json_data = json.load(open(self.json_folder+"/"+self.json_path)) #TODO make this  path 
+
+        #DIRECT JSON DATA
+        self.max_racks = 20
         self.jig_types = self.json_data["jig_types"]
         self.racks = self.json_data["racks"]
-        self.production_lines = self.json_data["production_lines"]
         self.flights = self.json_data["flights"]
         self.jigs = self.json_data["jigs"]    #UPDATE EACH TIME
         self.racks = self.json_data["racks"]
+        self.trailers = self.json_data["trailers_beluga"]
 
-        #ordered list of flights
-        self.flight_list = [i["name"] for i in self.flights]
-        self.current_flight = self.flight_list[0]
+        #INITIAL RL VARS
+        self.cumulative_reward = 0
+        self.cumulative_length = 0
+        self.features = 8 #TODO KEEP ME UP TO DATE
 
         #ordered list of jigs to come off flights
         self.jigs_from_flights = [jig for flight in self.flights for jig in flight["incoming"]]
@@ -424,34 +420,17 @@ class StackingEnv(gym.Env):
 
         #ordered list to go to outgoing flights
         self.outgoing_flight_jigs = self.get_outgoing_flight_jigs()
-        self.cumulative_reward = 0
-        self.cumulative_length = 0
+
+        #Set up trailers to recieve Jigs
+        for t in self.trailers:
+            t["jig"] = []
+
+
         observation = self._get_obs()
-        info = self._get_info()
-        
-        
+        info = self._get_info
         observation = observation.to(torch.float32)
         return observation, info
     
-    
-     
-
-        
-    def get_complete_hangars(self):
-        complete = 0
-        hangars = self.production_lines
-        for hangar in hangars:
-            if hangar["schedule"]:
-                continue
-            else:
-                complete += 1
-        return complete
-
-
-    
-    def get_plane_complete(self):
-        current_flight_index = [i["name"] for i in self.flights].index(self.current_flight)
-        return self.flights[current_flight_index]["outgoing"] == [] and self.flights[current_flight_index]["incoming"] == []
     
     def get_current_sum_us(self):
         #num of jigs stacked on top of lower priority jigs in each rack
@@ -470,14 +449,22 @@ class StackingEnv(gym.Env):
  
     
     def _get_terminated(self):
-        #If there are no outgoing jigs and no schedule for the production lines we are done
-        if not self.flight_list and not any(l["schedule"] for line in self.production_lines for l in line):
-            return True
-        else:
-            return False
+        #If all racks are full or cannot take the next jig from the flight we terminate with the reward we have so far
+        #Assume next jig is on a trailer which means we cant terminate if flight has a jig and trailer doens't
+        rack_spaces: list[int] = [self.get_current_rack_space(rack) for rack in self.racks]
+        for t in self.trailers:
+            if t['jig']:
+                size = self.get_jig_current_size(t['jig'][0])
+                for space in rack_spaces:
+                    if space - size < 0:
+                        return True
+        return False
+
 
     def _get_truncated(self):
-        ...
+        #TODO what about when we get stuck
+        return False
+    
 
     def step(self, action):
 
@@ -486,44 +473,40 @@ class StackingEnv(gym.Env):
 
         #reward logic
         curr_sum_us = self.get_current_sum_us()
-        curr_complete_hangars = self.get_complete_hangars()
-        curr_plane_complete = self.get_plane_complete()
-
-
-
+    
 
         poss_actions = self.get_possible_actions()
         if action in  poss_actions:
             #Take the action
             self.action_mapping(action)
+
+        #TODO do we need a penalty for incorect actions to prompt good actions>
         
 
-        #Check if need to change flight
-        observation = self._get_obs()
         
         
+        
+        #before reward as there is a temr condition in there
+        terminated = self._get_terminated()
 
 
         #Reward is the difference in US before and after the action
-        #Also reward for finishing a flight completely
-        #Also reward for finishing a hangar
-        #and a BIG reward for winning
+        #As there is no NOOP then it will slowly fill racks as these will be the avilable actions
         reward = curr_sum_us - self.get_current_sum_us()
-        reward += self.get_complete_hangars() - curr_complete_hangars
-        if self.get_plane_complete():
-            reward += 5
-            if self.flight_list:
-                self.flight_list.pop(0)
-                self.current_flight = self.flight_list[0]
-            else: self.current_flight = None
-           
-        truncated = False
-        terminated = self._get_terminated()
-        if terminated:
+
+        #Extra reward for completing and set terminated
+        if not self.jigs_from_flights and not any(t["jig"] for t in self.trailers):
             reward += 1000
+            terminated = True
+           
+        truncated = self._get_truncated()
+        
+
+       
         self.cumulative_reward += reward
         self.cumulative_length += 1
         info = self._get_info()
+        observation = self._get_obs()
         
        
             
@@ -537,11 +520,11 @@ class StackingEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    #env = StackingEnv("instances/problem_44_s45_j10_r2_oc83_f5.json")
-   #env = StackingEnv("instances/problem_139_s140_j49_r7_oc20_f35.json")
-    env = StackingEnv("/Users/ha24583/Documents/GitHub/Beluga-AI-Challenge/toys")
+
+    env = Beluga_rack_stack("/Users/ha24583/Documents/GitHub/Beluga-AI-Challenge/toys")
     print(env.get_possible_actions())
     print([env.action_dict[i] for i in env.get_possible_actions()])
+    env.step(1)
     
     obs,info = env.reset()
     print(obs)
