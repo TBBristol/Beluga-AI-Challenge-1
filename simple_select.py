@@ -257,8 +257,8 @@ class Beluga_rack_stack(gym.Env):
         
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
-
-    
+        if seed:
+            random.seed(seed)
         self.json_path = random.choice(os.listdir(self.json_folder))
         self.json_data = json.load(open(self.json_folder+"/"+self.json_path)) #TODO make this  path 
 
@@ -297,6 +297,7 @@ class Beluga_rack_stack(gym.Env):
     
     
     def get_current_sum_us(self):
+        
         #num of jigs stacked on top of lower priority jigs in each rack
         priorities_hangar_each_rack = [[self.hangar_priority_jigs.get(j, 3000) for j in i["jigs"] ] for i in self.racks]
         #List of list each list is [p1,p2,p3,p4] where p1 is priority of rig beluga side 

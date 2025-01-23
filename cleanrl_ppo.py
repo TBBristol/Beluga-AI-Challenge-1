@@ -159,7 +159,7 @@ class Agent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
     
 class DefaultAttention(nn.Module):
-    def __init__(self,env,embed_dim =256,num_heads=1):
+    def __init__(self,env,embed_dim =256,num_heads=8):
         super().__init__()
         assert embed_dim % num_heads == 0
         self.env = env
@@ -171,9 +171,9 @@ class DefaultAttention(nn.Module):
         assert self.head_dim * self.num_heads == self.embed_dim #Needs to be divisible
 
         #nn.linear(in_features,out_features)
-        self.query = nn.Linear(self.env.observation_space.shape[-1], self.embed_dim) #Input: (*,H_in) where * is any number of dims inc none and H_in = in features
-        self.key = nn.Linear(self.env.observation_space.shape[-1], self.embed_dim)
-        self.value = nn.Linear(self.env.observation_space.shape[-1], self.embed_dim)
+        self.query = nn.Linear(self.env.observation_space.shape[-1], self.embed_dim, bias = False) #Input: (*,H_in) where * is any number of dims inc none and H_in = in features
+        self.key = nn.Linear(self.env.observation_space.shape[-1], self.embed_dim, bias = False)
+        self.value = nn.Linear(self.env.observation_space.shape[-1], self.embed_dim, bias = False)
         self.attention = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
         #critic is a single value per batch taking in mean of the embeddings so in shape is batch,racks
         self.critic = nn.Sequential(nn.Linear(self.embed_dim, 128), nn.ReLU(), nn.Linear(128, 32), nn.ReLU(), nn.Linear(32, 1))
@@ -194,7 +194,12 @@ class DefaultAttention(nn.Module):
         return values
 
     def get_action_and_value(self, x, action=None):
+        """
+        x shape is batch,racks,features
+        action in case we want to use a specific action
 
+        Note that the action is sampled from the action probabilities so this is a stochastic action
+        """
         
         observations = x
         attn_output = self.encode_observations(observations)
@@ -217,6 +222,11 @@ class DefaultAttention(nn.Module):
         #attn_output shape is batch,racks,embed_dim
         return attn_output
     
+    def get_deterministic_action(self, observations):
+        attn_output = self.encode_observations(observations)
+        action_probs = self.decode_actions(attn_output)
+        action = torch.argmax(action_probs, dim=-1)
+        return action
 
     def decode_actions(self,attn_output):
         #attn_output shape is batch,racks,embed_dim
@@ -234,11 +244,9 @@ class DefaultAttention(nn.Module):
         #[batch, actions]
         return action_probs
 
-    
-    def reset_parameters(self):
-        ...
-
     def save_agents(self,path):
+        if not os.path.exists(path):
+            os.makedirs(path)
         actor_path = os.path.join(path,"actor.pth")
         critic_path = os.path.join(path,"critic.pth")
         torch.save(self.actor.state_dict(),actor_path)
@@ -249,6 +257,12 @@ class DefaultAttention(nn.Module):
         critic_path = os.path.join(path,"critic.pth")
         self.actor.load_state_dict(torch.load(actor_path))
         self.critic.load_state_dict(torch.load(critic_path))
+
+    def save_models(self,path,steps):
+        model_path = os.path.join(path,"model_{}".format(steps))
+        self.save_agents(model_path)
+
+   
 
 
 if __name__ == "__main__":
@@ -319,6 +333,7 @@ if __name__ == "__main__":
     next_done = torch.zeros(args.num_envs).to(device)
     
     for iteration in range(1, args.num_iterations + 1):
+        
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
@@ -350,6 +365,8 @@ if __name__ == "__main__":
                     writer.add_scalar("charts/episodic_return", item["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", item["episode"]["l"], global_step)
                     break
+            if global_step %10000 == 0:
+                agent.save_models("/Users/ha24583/Documents/GitHub/Beluga-AI-Challenge/models",global_step)
 
         # bootstrap value if not done
         with torch.no_grad():
