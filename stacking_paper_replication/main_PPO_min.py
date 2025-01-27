@@ -1,8 +1,9 @@
 import os
-from stable_baselines3 import DQN
+from stable_baselines3 import PPO
 from stacking_paper_env import ContainerStackEnv
 from stable_baselines3.common.monitor import Monitor
-import random   
+import random 
+import torch as th
 
 def generate_training_set(scale, num_instances=100):
     """
@@ -47,16 +48,21 @@ def train_for_scale(scale, max_height=3, max_steps=100, total_timesteps=20000, m
     env = Monitor(env, log_dir)
 
     
-    model = DQN(
+    model = PPO(
         policy="MlpPolicy",
         env=env,
-        learning_rate=1e-3,
-        batch_size=32,
+        verbose = 1,
+        learning_rate=3e-4,
+        batch_size=256,
         gamma=0.99,
-        exploration_fraction=0.1,
-        exploration_final_eps=0.02,
-        verbose=1,
-        tensorboard_log="tensorboard_log"
+        tensorboard_log="tensorboard_log",
+        policy_kwargs={
+            "optimizer_class": th.optim.Adam,
+            "optimizer_kwargs": dict(
+                eps=1e-5,
+                weight_decay=1e-5
+            ),
+        }
     )
     
     
@@ -69,7 +75,7 @@ def train_for_scale(scale, max_height=3, max_steps=100, total_timesteps=20000, m
     
     
     # Save model
-    save_name = f"DQN_scale_{scale}.zip"
+    save_name = f"PPO_VANILLA_scale_{scale}.zip"
     save_path = os.path.join(model_save_path, save_name)
     os.makedirs(model_save_path, exist_ok=True)
     model.save(save_path)
@@ -83,15 +89,15 @@ def main(scale):
             scale=scale,
             max_height=3,
             max_steps=1000,
-            total_timesteps=3000000,  
+            total_timesteps=1000000,  
             model_save_path=model_save_dir
 
         )
    
-    saved_model_path = f"{model_save_dir}/dqn_scale_{scale}.zip"
+
  
 
 
 if __name__ == "__main__":
-    scale = 10
+    scale = 30
     main(scale)

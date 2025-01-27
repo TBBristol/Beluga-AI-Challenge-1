@@ -125,39 +125,7 @@ import matplotlib.pyplot as plt
 import glob
 
 
-def test_model(scale, model_path, max_height=3, max_steps=50, episodes=5):
-    """
-    Loads a PPO model and runs some test episodes on newly generated instances with the same scale.
-    Prints or logs final rewards.
-    """
-    from stable_baselines3 import PPO
-    
-    # Reload model
-    model = PPO.load(model_path)
-    
-    rewards_list = []
-    for ep in range(episodes):
-        training_data = generate_training_set(scale=scale, num_instances=100)
-        # Generate a new env instance
-        env = ContainerStackEnv(training_data, max_height, max_steps)  
-        
-        obs, info = env.reset()
-        done = False
-        ep_reward = 0
-        
-        while not done:
-            # PPO expects shape (n_envs, obs_dim) or (n_envs, *obs_shape)
-            # For your custom obs, might need unsqueeze(0)
-            action, _states = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, infos = env.step(action)
-            ep_reward += reward
-            done = terminated or truncated
-        env.render()
-        rewards_list.append(ep_reward)
-        env.close()
-    
-    print(f"Tested {model_path} for {episodes} episodes at scale={scale}. Rewards: {rewards_list}")
-    print(f"Average reward: {sum(rewards_list)/len(rewards_list)}")
+
 
 def main(scale):
     model_save_dir = "models"
@@ -165,14 +133,10 @@ def main(scale):
             scale=scale,
             max_height=3,
             max_steps=1000,
-            total_timesteps=2000000,  
+            total_timesteps=1000000,  
             model_save_path=model_save_dir
 
         )
-  
-    # Test the model
-    saved_model_path = f"{model_save_dir}/ppo_scale_{scale}.zip"
-    test_model(scale=scale, model_path=saved_model_path, episodes=3)
 
 
 class GradientMonitorCallback(BaseCallback):
@@ -188,7 +152,7 @@ class GradientMonitorCallback(BaseCallback):
                 if param.grad is not None:
                     grad_mean = param.grad.mean().item()
                     grad_norm = param.grad.norm().item()
-                    print(f"Gradient {name}: mean={grad_mean:.6f}, norm={grad_norm:.6f}")
+                    #print(f"Gradient {name}: mean={grad_mean:.6f}, norm={grad_norm:.6f}")
                     
                     # Store for history
                     if name not in self.grad_history:
@@ -255,11 +219,12 @@ class PrintStatsCallback(BaseCallback):
         
         # Print them (only if verbose > 0)
         if self.verbose > 0:
-            print(f"--- Rollout End ---")
-            print(f"Advantage mean: {adv_mean:.3f}, std: {adv_std:.3f}")
-            print(f"Returns mean:   {ret_mean:.3f}, std: {ret_std:.3f}")
-            print(f"Log prob mean:  {logp_mean:.3f}, std: {logp_std:.3f}")
-            print(f"Value mean:     {val_mean:.3f},  std: {val_std:.3f}\n")
+            ...
+           # print(f"--- Rollout End ---")
+            #print(f"Advantage mean: {adv_mean:.3f}, std: {adv_std:.3f}")
+            #print(f"Returns mean:   {ret_mean:.3f}, std: {ret_std:.3f}")
+            #print(f"Log prob mean:  {logp_mean:.3f}, std: {logp_std:.3f}")
+            #print(f"Value mean:     {val_mean:.3f},  std: {val_std:.3f}\n")
         
         # Returning True to keep training
         return True
