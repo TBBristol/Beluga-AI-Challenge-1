@@ -90,7 +90,7 @@ class CustomAttentionPolicy(ActorCriticPolicy):
         # Actor: flatten -> MLP -> (B, n_stacks) logits
         #actor_in_dim = n_stacks * embed_dim
         # MLP(128,128,32,n_stacks)
-        self.actor_net = make_mlp([n_stacks*embed_dim, 128, 128, 32, n_stacks])
+        self.actor_net = make_mlp([embed_dim, 128, 128, 32, 1])
         
         # Critic: mean-pool -> MLP -> (B,1)
         # input is (B, 256) after mean pooling
@@ -142,14 +142,14 @@ class CustomAttentionPolicy(ActorCriticPolicy):
         
         # Actor branch
         B, n_stacks, embed_dim = attn_output.shape
-        actor_in = attn_output.reshape(B, n_stacks * embed_dim)
+        actor_in = attn_output.reshape(B, n_stacks, embed_dim)
         
         # Scale inputs
-        actor_in = actor_in / (actor_in.norm(dim=-1, keepdim=True) + 1e-8)
+        #actor_in = actor_in / (actor_in.norm(dim=-1, keepdim=True) + 1e-8)
         
         # Get logits 
-        logits = self.actor_net(actor_in)
-      
+        logits = self.actor_net(actor_in) #(B,n_stacks,1)
+        logits = logits.squeeze(-1) #(B,n_stacks)
         
         
         # Masking
@@ -166,41 +166,42 @@ class CustomAttentionPolicy(ActorCriticPolicy):
         else:
             actions = dist.sample()
         
-        # 3) Critic branch with gradient scaling
+        # 3) Critic branch 
         # Mean-pool => (B, 256)
         critic_in = attn_output.mean(dim=1)
         
-        values = self.critic_net(critic_in).squeeze(-1) #(B,1)
-      
+        values = self.critic_net(critic_in) #(B,1)
+        values = self.critic_net(critic_in).squeeze(-1)  # (B,)
         log_probs = dist.log_prob(actions)
-        
+        #TODO check log probs
         return actions, values, log_probs
 
     def get_distribution(self, obs: th.Tensor):
         """
         SB3 calls this to get the distribution over actions.
         """
-         # 1) Self-attention: (B, n_stacks, 6) -> (B, n_stacks, 256)
+        # 1) Self-attention: (B, n_stacks, 6) -> (B, n_stacks, 256)
         attn_output = self.self_attention(obs)
         
         # Actor branch
         B, n_stacks, embed_dim = attn_output.shape
-        actor_in = attn_output.reshape(B, n_stacks * embed_dim)
+        actor_in = attn_output.reshape(B, n_stacks, embed_dim)
         
         # Scale inputs
-        actor_in = actor_in / (actor_in.norm(dim=-1, keepdim=True) + 1e-8)
+        #actor_in = actor_in / (actor_in.norm(dim=-1, keepdim=True) + 1e-8)
         
         # Get logits 
-        logits = self.actor_net(actor_in)
-         #Masking
+        logits = self.actor_net(actor_in) #(B,n_stacks,1)
+        logits = logits.squeeze(-1) #(B,n_stacks)
+        
+        
+        # Masking
         action_mask = self._get_action_mask(obs)
-        #masked_logits = logits * action_mask + (1 - action_mask) * self.large_negative #Apply large neg to masked values
+      
+        #masked_logits = logits * action_mask + (1 - action_mask) * self.large_negative #Apply large neg to masked values]
         masked_logits = logits.masked_fill(action_mask == 0, float('-inf'))
         masked_logits = F.softmax(masked_logits, dim  = -1)
-        
        
-        
-
         dist = self.action_dist.proba_distribution(masked_logits)
         return dist
 
@@ -213,17 +214,20 @@ class CustomAttentionPolicy(ActorCriticPolicy):
         
         # Actor branch
         B, n_stacks, embed_dim = attn_output.shape
-        actor_in = attn_output.reshape(B, n_stacks * embed_dim)
+        actor_in = attn_output.reshape(B, n_stacks, embed_dim)
         
         # Scale inputs
-        actor_in = actor_in / (actor_in.norm(dim=-1, keepdim=True) + 1e-8)
+        #actor_in = actor_in / (actor_in.norm(dim=-1, keepdim=True) + 1e-8)
         
         # Get logits 
-        logits = self.actor_net(actor_in)
-
+        logits = self.actor_net(actor_in) #(B,n_stacks,1)
+        logits = logits.squeeze(-1) #(B,n_stacks)
+        
+        
         # Masking
         action_mask = self._get_action_mask(obs)
-       #masked_logits = logits * action_mask + (1 - action_mask) * self.large_negative #Apply large neg to masked values
+      
+        #masked_logits = logits * action_mask + (1 - action_mask) * self.large_negative #Apply large neg to masked values]
         masked_logits = logits.masked_fill(action_mask == 0, float('-inf'))
         masked_logits = F.softmax(masked_logits, dim  = -1)
         
@@ -240,22 +244,25 @@ class CustomAttentionPolicy(ActorCriticPolicy):
 
     def evaluate_actions(self, obs: th.Tensor, actions: th.Tensor):
         
-        # 1) Self-attention: (B, n_stacks, 6) -> (B, n_stacks, 256)
+       # 1) Self-attention: (B, n_stacks, 6) -> (B, n_stacks, 256)
         attn_output = self.self_attention(obs)
         
         # Actor branch
         B, n_stacks, embed_dim = attn_output.shape
-        actor_in = attn_output.reshape(B, n_stacks * embed_dim)
+        actor_in = attn_output.reshape(B, n_stacks, embed_dim)
         
         # Scale inputs
-        actor_in = actor_in / (actor_in.norm(dim=-1, keepdim=True) + 1e-8)
+        #actor_in = actor_in / (actor_in.norm(dim=-1, keepdim=True) + 1e-8)
         
         # Get logits 
-        logits = self.actor_net(actor_in)
-       
+        logits = self.actor_net(actor_in) #(B,n_stacks,1)
+        logits = logits.squeeze(-1) #(B,n_stacks)
         
+        
+        # Masking
         action_mask = self._get_action_mask(obs)
-        #masked_logits = logits * action_mask + (1 - action_mask) * self.large_negative
+      
+        #masked_logits = logits * action_mask + (1 - action_mask) * self.large_negative #Apply large neg to masked values]
         masked_logits = logits.masked_fill(action_mask == 0, float('-inf'))
         masked_logits = F.softmax(masked_logits, dim  = -1)
         
@@ -266,8 +273,8 @@ class CustomAttentionPolicy(ActorCriticPolicy):
         # Scale critic input
         critic_in = attn_output.mean(dim=1)
    
-        values = self.critic_net(critic_in).squeeze(-1)
-        
+        values = self.critic_net(critic_in) #(B,1)
+        values = self.critic_net(critic_in).squeeze(-1)  # (B,)
         return values, log_prob, entropy
 
    
