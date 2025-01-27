@@ -47,4 +47,4 @@ class SelfAttentionBlock(nn.Module):
         return out  
     
 
-    #TODO query over whether the skip is implemented properly as paper says X not Xembed
+   
