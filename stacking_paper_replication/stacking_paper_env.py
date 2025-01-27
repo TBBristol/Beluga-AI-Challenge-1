@@ -99,17 +99,15 @@ class ContainerStackEnv(gym.Env):
         truncated = False
         info = {}
         
-        # If we've already placed all containers, do no-op
-        if self.next_container_index >= self.num_containers:
-            terminated = True
-            return self._get_observation(), 0.0, terminated, truncated, info
+     
 
         old_unsorted = self.current_unsorted
         if type(action) == tuple:
             action = action[0]
-        # Check if the chosen stack is full
-        if len(self.stacks[action]) >= self.max_height:
-            reward = -1
+        # check if we have placed all containers, its terminal
+        if self.next_container_index >= self.num_containers:
+            terminated = True
+            return self._get_observation(), 0.0, terminated, truncated, info
         else:
             # Place the next container
             container_priority = self.containers[self.next_container_index]
@@ -120,14 +118,10 @@ class ContainerStackEnv(gym.Env):
             
             # Reward = old_unsorted - new_unsorted
             reward = (old_unsorted - self.current_unsorted) 
-            reward += 1 #TODO is this needed
+          
             
             self.next_container_index += 1
-        
-        # If we have placed all containers, it's a terminal episode
-        if self.next_container_index >= self.num_containers:
-            terminated = True
-        
+     
         # If there's a max step limit, check if we exceed it
         if self.max_steps is not None and self.current_step >= self.max_steps:
             truncated = True

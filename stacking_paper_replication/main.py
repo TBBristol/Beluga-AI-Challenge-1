@@ -82,6 +82,7 @@ def train_for_scale(scale, max_height=3, max_steps=100, total_timesteps=20000, m
         vf_coef=0.1,
         max_grad_norm = 1000,
         clip_range=0.2,
+        tensorboard_log= "tensorboard_log",
         #target_kl=0.02,
         policy_kwargs={
             "optimizer_class": th.optim.Adam,
