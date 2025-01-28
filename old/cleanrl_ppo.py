@@ -14,7 +14,7 @@ from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
 from pufferlib import vector, environments
 from pufferlib.pufferlib.environments import atari
-from simple_select import Beluga_rack_stack
+from old.simple_select import Beluga_rack_stack
 from pufferlib import pufferlib
 
 from stable_baselines3.common.atari_wrappers import (  # isort:skip

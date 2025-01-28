@@ -5,7 +5,7 @@ import numpy as np
 from itertools import pairwise
 from gymnasium.spaces import Box, Discrete, Sequence
 import torch
-from action_dict import action_dict
+from old.action_dict import action_dict
 import pufferlib
 import os
 import random

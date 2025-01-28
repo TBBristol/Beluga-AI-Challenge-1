@@ -1,5 +1,5 @@
-from simple_select import Beluga_rack_stack
-from cleanrl_ppo import DefaultAttention
+from old.simple_select import Beluga_rack_stack
+from old.cleanrl_ppo import DefaultAttention
 import random
 import torch
 

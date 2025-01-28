@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from stacking_env import StackingEnv
+from old.stacking_env import StackingEnv
 
 import torch.nn as nn
 import random
